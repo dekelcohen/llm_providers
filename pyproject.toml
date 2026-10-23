@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "llm_providers"
+version = "0.1.0"
+description = "Shared LLM/VLM provider clients: OpenRouter, AWS Bedrock, Azure OpenAI, Gemini, Copilot CLI"
+requires-python = ">=3.9"
+dependencies = ["requests>=2.31", "python-dotenv>=1.0"]
+
+[project.optional-dependencies]
+bedrock = ["boto3>=1.34"]
+
+[tool.setuptools]
+packages = ["llm_providers"]
