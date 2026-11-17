@@ -6,6 +6,8 @@ so several repos (trajectory generator, Excel table parsing fine-tuning, ...) us
 | Module | Entry point | Notes |
 |---|---|---|
 | `openrouter.py` | `call_openrouter(messages, model, max_tokens, temperature, reasoning_effort, response_format=None)` | `OPENROUTER_API_KEY`; optional JSON `response_format` |
+| `dispatch.py` | `call_llm(messages, model, max_tokens, temperature, reasoning_effort)` | provider by model prefix: `or-`, `aws-`, `azure-`, `gemini-`, `copilot-` |
+| `batch.py` | `wrap_sync_call_llm_many_async(prompts, contexts, model_name, max_new_tokens, base_url, apiKey)` | concurrent batch over `dispatch.call_llm` (threads + semaphore, `max_concurrency=8`); sends `prompt + '\n' + context`; returns `[{'answer', 'model', 'prompt', 'context'}]`; `base_url`/`apiKey` ignored |
 | `aws_bedrock.py` | `call_llm(messages, bedrock_model_id=None, ...)` | boto3 (`[bedrock]` extra); AWS profile/SSO, optional guardrail env vars |
 | `azure_openai.py` | `call_llm(messages, azure_deployment_model=None, ...)` | `AZURE_OPENAI_*` |
 | `gemini.py` | `call_gemini(messages, model, ...)` | `GEMINI_API_KEY` |
@@ -15,8 +17,8 @@ so several repos (trajectory generator, Excel table parsing fine-tuning, ...) us
 | `model_registry.py` | `get_model_info(model)` | |
 | `usage.py` | `record`, `totals`, `reset`, `set_log_path` | token/cost/latency tracking (OpenRouter + Bedrock record automatically); JSONL log via `LLM_PROVIDERS_USAGE_LOG` |
 
-Provider selection by model-name prefix (`or-`, `aws-`, `azure-`, `gemini-`, `copilot-`) lives in the consumer repo
-(e.g. `models.py` in the trajectory repo), not here.
+Provider selection by model-name prefix (`or-`, `aws-`, `azure-`, `gemini-`, `copilot-`): `dispatch.call_llm`
+(the trajectory repo still has its own `models.py` dispatcher).
 
 ## Install
 
