@@ -3,7 +3,9 @@ import base64
 import io
 import json
 import os
+import sys
 import tempfile
+import types
 import unittest
 from unittest import mock
 
@@ -17,6 +19,66 @@ class FakeResponse:
 
     def json(self):
         return self._data
+
+
+class DispatchTest(unittest.TestCase):
+    def test_prefixed_models_use_shared_provider_routing(self):
+        from llm_providers.dispatch import call_llm, call_llm_provider
+
+        messages = [{"role": "user", "content": "hi"}]
+        cases = [
+            ("aws-eu.model", "aws_bedrock", "call_llm", "bedrock_model_id", "eu.model", True),
+            ("gemini-2.5-flash", "gemini", "call_gemini", "model", "gemini-2.5-flash", True),
+            ("or-provider/model", "openrouter", "call_openrouter", "model", "provider/model", True),
+            ("azure-deployment", "azure_openai", "call_llm", "azure_deployment_model", "deployment", True),
+            ("copilot-model", "copilot_cli", "call_copilot", "model", "model", False),
+        ]
+        for model, module_name, function_name, model_arg, provider_model, has_temperature in cases:
+            with self.subTest(model=model):
+                provider = types.ModuleType("llm_providers." + module_name)
+                provider_call = mock.Mock(return_value="answer")
+                setattr(provider, function_name, provider_call)
+                with mock.patch.dict(sys.modules, {provider.__name__: provider}):
+                    self.assertEqual(call_llm(messages, model, 123, 0, "high",
+                                              conversation_key="planner"), "answer")
+                    self.assertEqual(call_llm_provider(None, model, messages, 123, "high",
+                                                       conversation_key="planner"), "answer")
+                kwargs = {model_arg: provider_model, "max_tokens": 123, "reasoning_effort": "high"}
+                if has_temperature:
+                    kwargs["temperature"] = 0
+                else:
+                    kwargs["conversation_key"] = "planner"
+                self.assertEqual(provider_call.call_count, 2)
+                provider_call.assert_called_with(messages, **kwargs)
+
+    def test_unprefixed_client_stream_and_unknown_model(self):
+        from llm_providers.dispatch import call_llm, call_llm_provider
+
+        messages = [{"role": "user", "content": "hi"}]
+        client = mock.Mock()
+        client.chat.completions.create.return_value = [
+            types.SimpleNamespace(choices=[types.SimpleNamespace(delta=types.SimpleNamespace(content=content))])
+            for content in ("hello", None, " world")
+        ]
+        self.assertEqual(call_llm_provider(client, "plain-model", messages, 123, "low"), "hello world")
+        client.chat.completions.create.assert_called_once_with(
+            model="plain-model", temperature=0, messages=messages, stream=True
+        )
+        with self.assertRaisesRegex(ValueError, "Unknown provider prefix"):
+            call_llm(messages, "plain-model")
+
+    def test_response_format_is_forwarded_or_rejected(self):
+        from llm_providers.dispatch import call_llm
+
+        provider = types.ModuleType("llm_providers.openrouter")
+        provider.call_openrouter = mock.Mock(return_value="{}")
+        messages = [{"role": "user", "content": "hi"}]
+        response_format = {"type": "json_object"}
+        with mock.patch.dict(sys.modules, {provider.__name__: provider}):
+            self.assertEqual(call_llm(messages, "or-provider/model", response_format=response_format), "{}")
+        self.assertEqual(provider.call_openrouter.call_args.kwargs["response_format"], response_format)
+        with self.assertRaisesRegex(ValueError, "only for OpenRouter"):
+            call_llm(messages, "gemini-2.5-flash", response_format=response_format)
 
 
 class OpenRouterTest(unittest.TestCase):
