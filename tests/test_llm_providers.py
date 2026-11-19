@@ -143,6 +143,35 @@ class BedrockTest(unittest.TestCase):
         t = usage.totals()["bedrock:eu.anthropic.claude-x"]
         self.assertEqual((t["input_tokens"], t["output_tokens"]), (7, 3))
 
+    def test_sonnet_55_adaptive_effort_and_legacy_behavior(self):
+        try:
+            from llm_providers import aws_bedrock
+        except ImportError:
+            self.skipTest("boto3 not installed")
+        client = mock.Mock()
+        client.invoke_model.side_effect = lambda **kwargs: {
+            "body": io.BytesIO(b'{"content":[{"type":"text","text":"answer"}]}')
+        }
+        messages = [{"role": "user", "content": "hi"}]
+        with mock.patch.object(aws_bedrock, "_build_client", return_value=client):
+            self.assertEqual(aws_bedrock.call_llm(messages, "eu.anthropic.claude-sonnet-5-5",
+                                                  max_tokens=12000, temperature=0.8,
+                                                  reasoning_effort="medium"), "answer")
+            sent = json.loads(client.invoke_model.call_args.kwargs["body"])
+            self.assertEqual(sent["thinking"], {"type": "adaptive"})
+            self.assertEqual(sent["output_config"], {"effort": "medium"})
+            self.assertNotIn("temperature", sent)
+
+            aws_bedrock.call_llm(messages, "eu.anthropic.claude-sonnet-5-5")
+            self.assertNotIn("temperature", json.loads(client.invoke_model.call_args.kwargs["body"]))
+            aws_bedrock.call_llm(messages, "eu.anthropic.claude-sonnet-4-5",
+                                 temperature=0.8, reasoning_effort="low")
+            sent = json.loads(client.invoke_model.call_args.kwargs["body"])
+            self.assertEqual(sent["temperature"], 0.8)
+            self.assertNotIn("thinking", sent)
+            with self.assertRaisesRegex(ValueError, "Unsupported Claude Sonnet 5.5 reasoning effort"):
+                aws_bedrock.call_llm(messages, "eu.anthropic.claude-sonnet-5-5", reasoning_effort="none")
+
 
 class UsageLogTest(unittest.TestCase):
     def test_jsonl_log(self):

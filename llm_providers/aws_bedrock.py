@@ -149,7 +149,7 @@ def call_llm(messages, bedrock_model_id=None, max_tokens=60000, temperature=0, r
                           "eu.anthropic.claude-opus-4-7".
         max_tokens: Maximum completion tokens.
         temperature: Sampling temperature (0–1).
-        reasoning_effort: Reserved for future extended-thinking support.
+        reasoning_effort: Adaptive thinking effort for Claude Sonnet 5.5; ignored for other models.
         max_retries: Retry attempts on transient errors.
 
     Returns:
@@ -190,8 +190,9 @@ def call_llm(messages, bedrock_model_id=None, max_tokens=60000, temperature=0, r
         anthropic_messages = [{"role": "user", "content": [{"type": "text", "text": "\n".join(system_parts)}]}]
         system_parts = []
 
-    # opus and openai models reject the temperature parameter entirely
-    _temperature_unsupported = "opus" in bedrock_model_id or "openai" in bedrock_model_id
+    sonnet_55 = "anthropic.claude-sonnet-5-5" in bedrock_model_id
+    # Sonnet 5.5 uses adaptive thinking by default, which is incompatible with temperature.
+    _temperature_unsupported = sonnet_55 or "opus" in bedrock_model_id or "openai" in bedrock_model_id
 
     native_request = {
         "max_tokens": max_tokens,
@@ -201,6 +202,11 @@ def call_llm(messages, bedrock_model_id=None, max_tokens=60000, temperature=0, r
         native_request["temperature"] = temperature
     if "anthropic" in bedrock_model_id:
         native_request["anthropic_version"] = "bedrock-2023-05-31"
+    if sonnet_55 and reasoning_effort is not None:
+        if reasoning_effort not in ("low", "medium", "high", "xhigh", "max"):
+            raise ValueError(f"Unsupported Claude Sonnet 5.5 reasoning effort: {reasoning_effort!r}")
+        native_request["thinking"] = {"type": "adaptive"}
+        native_request["output_config"] = {"effort": reasoning_effort}
     if system_parts:
         native_request["system"] = "\n".join(system_parts)
 

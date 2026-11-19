@@ -23,6 +23,9 @@ AWS, Azure, OpenRouter and Copilot prefixes are stripped; Gemini receives the fu
 `dispatch.call_llm_provider(client, model, messages, max_tokens, reasoning_effort, conversation_key=None)`
 delegates to the same dispatcher. `response_format` is supported only for OpenRouter; other
 providers raise `ValueError` rather than silently ignoring it.
+Bedrock Claude Sonnet 5.5 maps `reasoning_effort` to adaptive thinking `output_config.effort`
+(`low`, `medium`, `high`, `xhigh`, `max`); temperature is omitted because it is incompatible
+with adaptive thinking. Other Bedrock models currently ignore `reasoning_effort`.
 
 ## Install
 
